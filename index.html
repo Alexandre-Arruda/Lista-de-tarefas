@@ -41,23 +41,39 @@
         .stats {
             color: #888;
             font-size: 0.85rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            margin-bottom: 0.5rem;
         }
 
-        .sync-status {
+        .user-id-section {
+            margin-bottom: 1.5rem;
+            padding: 0.75rem;
+            background: #2a2a2a;
+            border-radius: 4px;
+            border: 1px solid #3a3a3a;
+        }
+
+        .user-id-section label {
+            display: block;
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 0.5rem;
+        }
+
+        .user-id-section input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        .user-id-section small {
+            display: block;
+            margin-top: 0.5rem;
             font-size: 0.75rem;
             color: #666;
-        }
-
-        .sync-status.syncing {
-            color: #888;
-        }
-
-        .sync-status.synced {
-            color: #5a5;
         }
 
         .input-area {
@@ -240,12 +256,6 @@
             color: #999;
         }
 
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: #888;
-        }
-
         @media (max-width: 600px) {
             .container {
                 padding: 1.5rem;
@@ -269,11 +279,14 @@
     <div class="container">
         <h1>Tarefas</h1>
         <div class="stats">
-            <div>
-                <span id="task-count">0 tarefas</span> · 
-                <span id="completed-count">0 concluídas</span>
-            </div>
-            <div class="sync-status" id="sync-status"></div>
+            <span id="task-count">0 tarefas</span> · 
+            <span id="completed-count">0 concluídas</span>
+        </div>
+
+        <div class="user-id-section">
+            <label>Seu ID de usuário (para sincronizar entre dispositivos)</label>
+            <input type="text" id="user-id" placeholder="Digite um ID único (ex: joao123)">
+            <small>Use o mesmo ID em todos os seus dispositivos para sincronizar as tarefas</small>
         </div>
         
         <div class="input-area">
@@ -295,7 +308,7 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', async () => {
+        document.addEventListener('DOMContentLoaded', () => {
             const taskInput = document.getElementById('task-input');
             const addTaskBtn = document.getElementById('add-task-btn');
             const taskList = document.getElementById('task-list');
@@ -304,59 +317,50 @@
             const filterBtns = document.querySelectorAll('.filter-btn');
             const clearCompletedBtn = document.getElementById('clear-completed-btn');
             const clearCompletedContainer = document.getElementById('clear-completed-container');
-            const syncStatus = document.getElementById('sync-status');
+            const userIdInput = document.getElementById('user-id');
 
             let currentFilter = 'all';
             let tasks = [];
-            let isLoading = false;
 
-            const STORAGE_KEY = 'user_tasks';
-
-            const setSyncStatus = (status) => {
-                syncStatus.className = 'sync-status';
-                if (status === 'syncing') {
-                    syncStatus.textContent = 'Salvando...';
-                    syncStatus.classList.add('syncing');
-                } else if (status === 'synced') {
-                    syncStatus.textContent = 'Salvo';
-                    syncStatus.classList.add('synced');
-                    setTimeout(() => {
-                        syncStatus.textContent = '';
-                    }, 2000);
-                } else if (status === 'error') {
-                    syncStatus.textContent = 'Erro ao salvar';
-                    syncStatus.style.color = '#d55';
+            // Gera ou recupera ID do usuário
+            const getUserId = () => {
+                let userId = localStorage.getItem('userId');
+                if (!userId && userIdInput.value.trim()) {
+                    userId = userIdInput.value.trim();
+                    localStorage.setItem('userId', userId);
+                } else if (!userId) {
+                    userId = 'user_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('userId', userId);
                 }
+                return userId;
             };
 
-            const loadTasks = async () => {
-                if (isLoading) return;
-                isLoading = true;
+            // Carrega o userId salvo
+            const savedUserId = localStorage.getItem('userId');
+            if (savedUserId) {
+                userIdInput.value = savedUserId;
+            }
 
-                try {
-                    const result = await window.storage.get(STORAGE_KEY);
-                    if (result && result.value) {
-                        tasks = JSON.parse(result.value);
-                    }
-                } catch (error) {
-                    console.log('Nenhuma tarefa salva ainda');
-                    tasks = [];
+            // Salva userId quando mudar
+            userIdInput.addEventListener('change', () => {
+                if (userIdInput.value.trim()) {
+                    localStorage.setItem('userId', userIdInput.value.trim());
+                    loadTasks();
                 }
+            });
 
-                isLoading = false;
+            const getStorageKey = () => {
+                return 'tasks_' + getUserId();
+            };
+
+            const loadTasks = () => {
+                const stored = localStorage.getItem(getStorageKey());
+                tasks = stored ? JSON.parse(stored) : [];
                 renderTasks();
             };
 
-            const saveTasks = async () => {
-                setSyncStatus('syncing');
-                
-                try {
-                    await window.storage.set(STORAGE_KEY, JSON.stringify(tasks));
-                    setSyncStatus('synced');
-                } catch (error) {
-                    console.error('Erro ao salvar:', error);
-                    setSyncStatus('error');
-                }
+            const saveTasks = () => {
+                localStorage.setItem(getStorageKey(), JSON.stringify(tasks));
             };
 
             const updateStats = () => {
@@ -413,7 +417,7 @@
                 updateStats();
             };
 
-            const addTask = async () => {
+            const addTask = () => {
                 const taskText = taskInput.value.trim();
                 if (taskText) {
                     const newTask = {
@@ -423,30 +427,30 @@
                     };
                     tasks.unshift(newTask);
                     taskInput.value = '';
+                    saveTasks();
                     renderTasks();
-                    await saveTasks();
                 }
             };
 
-            const toggleTask = async (id) => {
+            const toggleTask = (id) => {
                 const task = tasks.find(t => t.id === id);
                 if (task) {
                     task.completed = !task.completed;
+                    saveTasks();
                     renderTasks();
-                    await saveTasks();
                 }
             };
 
-            const deleteTask = async (id) => {
+            const deleteTask = (id) => {
                 tasks = tasks.filter(t => t.id !== id);
+                saveTasks();
                 renderTasks();
-                await saveTasks();
             };
 
-            const clearCompleted = async () => {
+            const clearCompleted = () => {
                 tasks = tasks.filter(t => !t.completed);
+                saveTasks();
                 renderTasks();
-                await saveTasks();
             };
 
             addTaskBtn.addEventListener('click', addTask);
@@ -465,7 +469,7 @@
 
             clearCompletedBtn.addEventListener('click', clearCompleted);
 
-            await loadTasks();
+            loadTasks();
         });
     </script>
 </body>
